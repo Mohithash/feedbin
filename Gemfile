@@ -99,5 +99,5 @@ gem "jbuilder_cache_multi"
 gem "bcrypt"
 
 # Stripe
-gem "stripe", "~> 4.24.0"
+gem "stripe", "~> 5.22.0"
 gem "stripe_event"
