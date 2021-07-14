@@ -27,16 +27,16 @@ $.extend feedbin,
   scrollStarted: false
   loadingMore: false
 
-  prepareShareMenu: ->
-    buildLink = (item, index) ->
+  prepareShareMenu: (data) ->
+    buildLink = (item, data, index) ->
       href = item.url
-        .replace('${url}',        encodeURIComponent(feedbin.selectedEntryData.url))
-        .replace('${title}',      encodeURIComponent(feedbin.selectedEntryData.title))
-        .replace('${source}',     encodeURIComponent(feedbin.selectedEntryData.feed_title))
-        .replace('${id}',         feedbin.selectedEntryData.id)
-        .replace('${raw_url}',    feedbin.selectedEntryData.url)
-        .replace('${twitter_id}', feedbin.selectedEntryData.twitter_id)
-        .replace('9999999999',    feedbin.selectedEntryData.id)
+        .replace('${url}',        encodeURIComponent(data.url))
+        .replace('${title}',      encodeURIComponent(data.title))
+        .replace('${source}',     encodeURIComponent(data.feed_title))
+        .replace('${id}',         data.id)
+        .replace('${raw_url}',    data.url)
+        .replace('${twitter_id}', data.twitter_id)
+        .replace('9999999999',    data.id)
 
       li       = $('<li>').addClass('share-option')
       label    = $('<div>').addClass('label').text(item.label)
@@ -52,7 +52,6 @@ $.extend feedbin,
         link.append(keyboard)
       li.append(link)
 
-    $('[data-behavior~=share_button_wrap]').removeClass('hide')
     services = [].concat(feedbin.data.sharing)
     offset = 1
     if "share" of navigator
@@ -66,7 +65,7 @@ $.extend feedbin,
 
     if services.length > 0
       markup = services.map (service, index) ->
-        buildLink(service, index + offset)
+        buildLink(service, data, index + offset)
       $('[data-behavior~=share_options]').html(markup)
 
   hideLinkAction: (url) ->
@@ -485,11 +484,14 @@ $.extend feedbin,
     if animate
       timeout = 200
       feedbin.panelScrollComplete = false
-      $(containerClass).css {'scroll-snap-type': 'unset'} if feedbin.smoothScroll
+      $(containerClass).css {'scroll-snap-type': 'unset'} if feedbin.aspectRatio
       $(containerClass).animate({scrollLeft: offset}, {duration: timeout})
       setTimeout ( ->
         feedbin.panelScrollComplete = true
-        $(containerClass).css {'scroll-snap-type': 'x mandatory'} if feedbin.smoothScroll
+      ), timeout
+
+      setTimeout ( ->
+        $(containerClass).css {'scroll-snap-type': 'x mandatory'}  if feedbin.aspectRatio
       ), timeout
     else
       $(containerClass).prop 'scrollLeft', offset
@@ -810,6 +812,14 @@ $.extend feedbin,
         $.extend feedbin.entries, data
         feedbin.preloadAssets(entry_ids[0])
 
+  hash: (string) ->
+    result = 0
+    for i in [0..(string.length-1)]
+      char = string.charCodeAt(i)
+      result = ((result << 5) - result) + char
+      result = result & result
+    result
+
   readability: () ->
     feedId = feedbin.selectedEntry.feed_id
     entryId = feedbin.selectedEntry.id
@@ -825,22 +835,20 @@ $.extend feedbin,
   fitVids: (target) ->
     target.fitVids({ customSelector: "iframe"});
 
-  randomNumber: ->
-    Math.floor(Math.random() * 1000)
-
   embed: (items, embed_url, urlFinder) ->
     if items.length > 0
       items.each ->
         item = $(@)
         url = urlFinder(item)
-        embedElement = feedbin.embeds["#{url}"]
-        if embedElement
-          item.replaceWith(embedElement.clone())
-        else if url
-          id = feedbin.randomNumber()
+        if url
+          id = feedbin.hash(url)
           item.attr("id", id)
-          $.get(embed_url, {url: url, dom_id: id}).fail ->
-            item.css({display: "block"})
+          embedElement = feedbin.embeds["#{id}"]
+          if embedElement
+            item.replaceWith(embedElement.clone())
+          else
+            $.get(embed_url, {url: url, dom_id: id}).fail ->
+              item.css({display: "block"})
 
 
   formatTweets: (target = "[data-behavior~=entry_content_wrap]") ->
@@ -850,7 +858,6 @@ $.extend feedbin,
       $("a", item).last().attr("href")
 
     feedbin.embed(items, feedbin.data.twitter_embed_path, urlFinder)
-
 
   formatInstagram: (target = "[data-behavior~=entry_content_wrap]") ->
     items = $('blockquote.instagram-media', target)
@@ -1256,7 +1263,6 @@ $.extend feedbin,
       $('body').removeClass('extract-active')
       feedbin.updateEntryContent(entry.content, entry.inner_content)
       feedbin.formatEntryContent(entryId, true)
-      feedbin.prepareShareMenu()
       if feedbin.viewType == 'updated'
         $('[data-behavior~=change_content_view][data-view-mode=diff]').prop('checked', true).change()
       else if feedbin.data.subscription_view_mode[entry.feed_id] == "newsletter"
@@ -1525,9 +1531,14 @@ $.extend feedbin,
         $('body').addClass('swipe')
 
     hasSmoothScrolling: ->
-      if typeof(CSS) == "function" && CSS.supports("scroll-behavior", "smooth")
+      if typeof(CSS) != "undefined" && CSS.supports("scroll-behavior", "smooth")
         feedbin.smoothScroll = true
         $('body').addClass('smooth-scroll')
+
+    hasAspectRatio: ->
+      if typeof(CSS) != "undefined" && CSS.supports("aspect-ratio", "1")
+        feedbin.aspectRatio = true
+        $('body').addClass('aspect-ratio')
 
     hasTouch: ->
       if 'ontouchstart' of document
@@ -1941,6 +1952,7 @@ $.extend feedbin,
     feedAction: ->
       $(document).on 'click', '[data-behavior~=feed_action]', (event) =>
         $(event.currentTarget).closest('form').submit()
+        event.currentTarget.blur()
         event.stopPropagation()
         event.preventDefault()
 
